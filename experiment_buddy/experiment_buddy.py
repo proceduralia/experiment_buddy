@@ -15,6 +15,7 @@ import tensorboardX
 import tqdm
 import wandb
 import wandb.cli
+import argparse
 import yaml
 from paramiko.ssh_exception import SSHException
 
@@ -40,34 +41,20 @@ def register(config_params):
     if hyperparams is not None:
         raise RuntimeError("refusing to overwrite registered parameters")
 
-    for k in config_params.keys():
+    parser = argparse.ArgumentParser()
+    for k, v in config_params.items():
         if k.startswith(wandb_escape):
             raise NameError(f"{wandb_escape} is a reserved prefix")
+        if _valid_hyperparam(k, v):
+            parser.add_argument(f"--{k}", type=type(v), default=v)
 
-    for arg in sys.argv[1:]:
-        if arg.endswith(".py"):
-            continue
-        if not arg.startswith("--"):
-            continue
+    parsed = parser.parse_args()
 
-        k, v = arg[2:].split("=")
+    for k, v in vars(parsed).items():
         k = k.lstrip(wandb_escape)
-        v = _cast_param(v)
-
-        if k not in config_params.keys():
-            raise ValueError(f"Trying to set {k}, but that's not one of {list(config_params.keys())}")
         config_params[k] = v
-    # TODO: should only register valid_hyperparams()
+
     hyperparams = config_params.copy()
-
-
-def _cast_param(v):
-    try:
-        return ast.literal_eval(v)
-    except ValueError:
-        return v
-    except SyntaxError:
-        return v
 
 
 def _valid_hyperparam(key, value):
@@ -165,8 +152,7 @@ class WandbWrapper:
 
 def deploy(host: str = "", sweep_yaml: str = "", proc_num: int = 1, entity=None,
            extra_slurm_headers="") -> WandbWrapper:
-    debug = '_pydev_bundle.pydev_log' in sys.modules.keys() and not os.environ.get(
-        'BUDDY_DEBUG_DEPLOYMENT', False)
+    debug = '_pydev_bundle.pydev_log' in sys.modules.keys() and not os.environ.get('BUDDY_DEBUG_DEPLOYMENT', False)
     is_running_remotely = "SLURM_JOB_ID" in os.environ.keys() or "BUDDY_IS_DEPLOYED" in os.environ.keys()
     local_run = not host
 
